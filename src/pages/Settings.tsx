@@ -37,6 +37,9 @@ import {
 export default function Settings() {
   const navigate = useNavigate();
   const [darkMode] = useState(() => localStorage.getItem("theme") === "dark");
+  const [currentOrganizationId, setCurrentOrganizationId] = useState(() =>
+    localStorage.getItem("organizationId"),
+  );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -65,6 +68,22 @@ export default function Settings() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    const syncOrganization = () => {
+      setCurrentOrganizationId(localStorage.getItem("organizationId"));
+    };
+
+    window.addEventListener("org-change", syncOrganization);
+    window.addEventListener("storage", syncOrganization);
+
+    return () => {
+      window.removeEventListener("org-change", syncOrganization);
+      window.removeEventListener("storage", syncOrganization);
+    };
+  }, []);
+
+  const hasOrganization = Boolean(currentOrganizationId);
 
   const loadData = async () => {
     try {
@@ -175,6 +194,15 @@ export default function Settings() {
   const formatDate = (date: string) => new Date(date).toLocaleString();
 
   const loadLabels = async () => {
+    if (!hasOrganization) {
+      setLabels([]);
+      setMessage({
+        type: "error",
+        text: "Select an organization before managing labels",
+      });
+      return;
+    }
+
     setLabelsLoading(true);
     try {
       const data = await getLabels();
@@ -187,6 +215,14 @@ export default function Settings() {
   };
 
   const handleSaveLabel = async () => {
+    if (!hasOrganization) {
+      setMessage({
+        type: "error",
+        text: "Select an organization before creating labels",
+      });
+      return;
+    }
+
     if (!labelName.trim()) {
       setMessage({ type: "error", text: "Label name is required" });
       return;
@@ -219,6 +255,14 @@ export default function Settings() {
   };
 
   const handleDeleteLabel = async (labelId: number) => {
+    if (!hasOrganization) {
+      setMessage({
+        type: "error",
+        text: "Select an organization before deleting labels",
+      });
+      return;
+    }
+
     if (!confirm("Are you sure you want to delete this label?")) return;
     try {
       await deleteLabel(labelId);
@@ -335,6 +379,7 @@ export default function Settings() {
               setActiveTab("labels");
               loadLabels();
             }}
+            disabled={!hasOrganization}
             className={`px-4 py-2 font-bold uppercase border-4 border-black ${
               activeTab === "labels"
                 ? darkMode
@@ -343,7 +388,7 @@ export default function Settings() {
                 : darkMode
                   ? "bg-slate-800 text-slate-100 hover:bg-slate-700"
                   : "bg-neo-secondary hover:bg-neo-accent text-black"
-            }`}
+            } ${!hasOrganization ? "opacity-60 cursor-not-allowed hover:bg-neo-secondary" : ""}`}
           >
             <Tags className="w-4 h-4 inline mr-2" />
             Labels
@@ -641,17 +686,34 @@ export default function Settings() {
               <h2 className="text-xl font-black uppercase">Task Labels</h2>
               <button
                 onClick={() => {
+                  if (!hasOrganization) {
+                    setMessage({
+                      type: "error",
+                      text: "Select an organization before creating labels",
+                    });
+                    return;
+                  }
                   setShowLabelForm(true);
                   setEditingLabel(null);
                   setLabelName("");
                   setLabelColor("#3B82F6");
                 }}
+                disabled={!hasOrganization}
                 className={`px-4 py-2 font-bold uppercase border-4 border-black flex items-center gap-2 ${darkMode ? "bg-neo-accent text-white hover:bg-rose-500" : "bg-black text-white hover:bg-gray-800"}`}
               >
                 <Plus className="w-4 h-4" />
                 Add Label
               </button>
             </div>
+
+            {!hasOrganization && (
+              <div
+                className={`mb-6 p-4 border-4 border-black font-bold ${darkMode ? "bg-slate-800 text-slate-100" : "bg-gray-200"}`}
+              >
+                Labels are organization-scoped. Select an organization from the
+                Organizations tab before creating or editing labels.
+              </div>
+            )}
 
             {showLabelForm && (
               <div
