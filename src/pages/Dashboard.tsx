@@ -172,6 +172,7 @@ export default function Dashboard({
   const numericOrgId = orgId ? Number(orgId) : NaN;
   const hasValidOrgId =
     !isPersonalMode && Number.isInteger(numericOrgId) && numericOrgId > 0;
+  const usePersonalTaskList = isPersonalMode || !hasValidOrgId;
   const headerTaskStats =
     viewMode === "kanban"
       ? boardTaskStats
@@ -195,21 +196,22 @@ export default function Dashboard({
 
   // Single, authoritative orgId initialization
   useEffect(() => {
-    if (isPersonalMode) {
+    const storedOrgId = localStorage.getItem("organizationId");
+    if (
+      isPersonalMode ||
+      !storedOrgId ||
+      storedOrgId === "null" ||
+      storedOrgId === "0"
+    ) {
       setOrgId(null);
       return;
     }
-    const storedOrgId = localStorage.getItem("organizationId");
-    if (!storedOrgId || storedOrgId === "null" || storedOrgId === "0") {
-      localStorage.removeItem("organizationId");
-      localStorage.removeItem("organizationName");
-      localStorage.removeItem("userRole");
-      window.dispatchEvent(new Event("org-change"));
-      navigate("/select-org");
-      return;
-    }
     setOrgId(storedOrgId);
-  }, [navigate, isPersonalMode]);
+  }, [isPersonalMode]);
+
+  useEffect(() => {
+    setViewMode(usePersonalTaskList ? "list" : "kanban");
+  }, [usePersonalTaskList]);
 
   const showToast = useCallback(
     (message: string, type: "success" | "error" = "success") => {
@@ -224,7 +226,7 @@ export default function Dashboard({
 
   const loadTasks = async () => {
     // Skip if no valid orgId in org mode
-    if (!isPersonalMode && !hasValidOrgId) {
+    if (!usePersonalTaskList && !hasValidOrgId) {
       setLoading(false);
       return;
     }
@@ -234,7 +236,7 @@ export default function Dashboard({
     try {
       let res: TaskPage;
       if (searchQuery || filterStatus !== null) {
-        if (isPersonalMode) {
+        if (usePersonalTaskList) {
           res = await searchTasks({
             title: searchQuery || undefined,
             status: filterStatus || undefined,
@@ -253,7 +255,7 @@ export default function Dashboard({
           }
           res = { ...searchRes, content: filtered };
         }
-      } else if (isPersonalMode) {
+      } else if (usePersonalTaskList) {
         res = await getTasks(page, 8);
       } else {
         res = await getOrgTasks(
@@ -359,12 +361,12 @@ export default function Dashboard({
   };
 
   useEffect(() => {
-    if (!isPersonalMode) {
+    if (!usePersonalTaskList) {
       loadProjects();
       loadAnalytics();
       loadMembers();
     }
-  }, [orgId, isPersonalMode]);
+  }, [orgId, usePersonalTaskList]);
 
   const loadMembers = async () => {
     if (!hasValidOrgId) return;
@@ -378,7 +380,14 @@ export default function Dashboard({
 
   useEffect(() => {
     loadTasks();
-  }, [page, searchQuery, filterStatus, orgId, isPersonalMode, selectedProject]);
+  }, [
+    page,
+    searchQuery,
+    filterStatus,
+    orgId,
+    usePersonalTaskList,
+    selectedProject,
+  ]);
 
   useEffect(() => {
     const handleOrgChange = () => {
@@ -446,7 +455,7 @@ export default function Dashboard({
     subscribeTaskEvent,
     subscribePresence,
     orgId,
-    isPersonalMode,
+    usePersonalTaskList,
   ]);
 
   // Load initial notifications
@@ -534,14 +543,14 @@ export default function Dashboard({
     setError(null);
     try {
       if (editingTask) {
-        if (isPersonalMode) {
+        if (usePersonalTaskList) {
           await updatePersonalTask(editingTask.id, formData);
         } else {
           await updateOrgTask(numericOrgId, editingTask.id, formData);
         }
         showToast("Task updated!");
       } else {
-        if (isPersonalMode) {
+        if (usePersonalTaskList) {
           await createTask(formData);
         } else {
           await createOrgTask(numericOrgId, formData);
@@ -561,7 +570,7 @@ export default function Dashboard({
       });
       setBoardRefresh((r) => r + 1);
       await loadTasks();
-      if (!isPersonalMode && showActivity) {
+      if (!usePersonalTaskList && showActivity) {
         await loadActivityLogs({ resetPage: true });
       }
     } catch (err: unknown) {
@@ -587,7 +596,7 @@ export default function Dashboard({
       } else {
         newStatus = "TODO";
       }
-      if (isPersonalMode) {
+      if (usePersonalTaskList) {
         await updatePersonalTask(task.id, {
           title: task.title,
           description: task.description,
@@ -624,7 +633,7 @@ export default function Dashboard({
     setActionLoading(id);
     setError(null);
     try {
-      if (isPersonalMode) {
+      if (usePersonalTaskList) {
         await deletePersonalTask(id);
       } else {
         await deleteOrgTask(numericOrgId, id);
@@ -715,7 +724,7 @@ export default function Dashboard({
               <h1 className="text-xl md:text-2xl font-black uppercase">
                 Task Manager
               </h1>
-              {!isPersonalMode && (
+              {!usePersonalTaskList && (
                 <span className="text-xs font-bold text-white/60">
                   {orgName} • {userRole}
                 </span>
@@ -729,7 +738,7 @@ export default function Dashboard({
           </div>
           <div className="flex items-center gap-2 md:gap-4">
             {/* Online Members */}
-            {!isPersonalMode && onlineMembers.length > 0 && (
+            {!usePersonalTaskList && onlineMembers.length > 0 && (
               <div className="flex items-center gap-1">
                 <div className="flex -space-x-2">
                   {onlineMembers.slice(0, 3).map((member) => (
@@ -765,7 +774,7 @@ export default function Dashboard({
                 )}
               </button>
             )}
-            {!isPersonalMode && (
+            {!usePersonalTaskList && (
               <button
                 onClick={() => {
                   setShowActivity(true);
@@ -776,7 +785,7 @@ export default function Dashboard({
                 Activity
               </button>
             )}
-            {!isPersonalMode &&
+            {!usePersonalTaskList &&
               (userRole === "OWNER" || userRole === "ADMIN") && (
                 <button
                   onClick={() => navigate("/organization-settings")}
@@ -905,7 +914,7 @@ export default function Dashboard({
                 {viewMode === "kanban" ? "Board Tasks" : "Tasks"}
               </span>
             </div>
-            {!isPersonalMode && analytics && (
+            {!usePersonalTaskList && analytics && (
               <>
                 <div className="border-l-4 border-black pl-4">
                   <span className="text-2xl font-black text-yellow-700">
@@ -940,7 +949,7 @@ export default function Dashboard({
               </>
             )}
           </div>
-          {!isPersonalMode && (
+          {!usePersonalTaskList && (
             <div className="flex gap-2">
               <button
                 onClick={() => setViewMode("kanban")}
@@ -1043,7 +1052,7 @@ export default function Dashboard({
                 />
               </div>
             )}
-            {!isPersonalMode && projects.length > 0 && (
+            {!usePersonalTaskList && projects.length > 0 && (
               <select
                 value={selectedProject || ""}
                 onChange={(e) => {
@@ -1093,7 +1102,7 @@ export default function Dashboard({
         )}
 
         {/* Filter Buttons - Only for List View */}
-        {(isPersonalMode || viewMode === "list") && (
+        {(usePersonalTaskList || viewMode === "list") && (
           <div className="flex gap-2 mb-6">
             <button
               onClick={() => handleFilterChange(null)}
@@ -1223,7 +1232,7 @@ export default function Dashboard({
                     disabled={actionLoading === -1}
                   />
                 </div>
-                {!isPersonalMode && projects.length > 0 && (
+                {!usePersonalTaskList && projects.length > 0 && (
                   <div>
                     <label className="block font-bold uppercase text-sm tracking-widest mb-2">
                       Project
@@ -1250,7 +1259,7 @@ export default function Dashboard({
                     </select>
                   </div>
                 )}
-                {!isPersonalMode &&
+                {!usePersonalTaskList &&
                   viewMode === "kanban" &&
                   members.length > 0 && (
                     <div>
@@ -1311,7 +1320,7 @@ export default function Dashboard({
         )}
 
         {/* Task View */}
-        {!isPersonalMode && viewMode === "kanban" && hasValidOrgId ? (
+        {!usePersonalTaskList && viewMode === "kanban" && hasValidOrgId ? (
           <OrgWebSocketProvider organizationId={numericOrgId}>
             <KanbanBoard
               key={`board-${orgId}`}
